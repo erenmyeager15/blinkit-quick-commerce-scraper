@@ -90,14 +90,25 @@ const crawler = new PlaywrightCrawler({
         await page.reload({ waitUntil: 'domcontentloaded', timeout: 90_000 });
         await page.waitForTimeout(5_000);
 
-        const title = await page.title();
-        const body = await page.locator('body').innerText().catch(() => '');
+        let title = await page.title();
+        let body = await page.locator('body').innerText().catch(() => '');
         if (await isBlockedPage(title, body)) {
             session?.markBad();
             throw new Error(`Blinkit challenge page detected for ${request.url}`);
         }
 
-        if (!body.toLowerCase().includes('showing results') && !body.toLowerCase().includes(searchQuery.toLowerCase())) {
+        if (payloads.length === 0 && !body.toLowerCase().includes(searchQuery.toLowerCase())) {
+            await page.waitForTimeout(5_000);
+            title = await page.title();
+            body = await page.locator('body').innerText().catch(() => '');
+        }
+
+        if (await isBlockedPage(title, body)) {
+            session?.markBad();
+            throw new Error(`Blinkit challenge page detected for ${request.url}`);
+        }
+
+        if (payloads.length === 0 && !body.toLowerCase().includes(searchQuery.toLowerCase())) {
             throw new Error(`Blinkit did not return a usable search page for "${searchQuery}".`);
         }
 

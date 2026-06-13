@@ -118,7 +118,9 @@ export const extractProducts = (
                     inventory,
                     inStock: !soldOut && (inventory === null || inventory > 0),
                     merchantType: asString(cartItem.merchant_type),
-                    rating: asNumber(ratingBar?.value),
+                    rating: asNumber(ratingBar?.value) === null
+                        ? null
+                        : Number((asNumber(ratingBar?.value) as number).toFixed(2)),
                     ratingCount: parseCompactCount(ratingCountText),
                     ratingCountText,
                     imageUrl: asString(cartItem.image_url) ?? asString(asObject(value.image)?.url),
