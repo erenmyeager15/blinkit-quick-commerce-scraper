@@ -1,0 +1,14 @@
+{
+  "searchQueries": ["milk"],
+  "locationName": "Mumbai",
+  "latitude": 19.076,
+  "longitude": 72.8777,
+  "inStockOnly": true,
+  "maxResults": 10,
+  "maxPagesPerQuery": 2,
+  "proxyConfiguration": {
+    "useApifyProxy": true,
+    "apifyProxyGroups": ["RESIDENTIAL"],
+    "apifyProxyCountry": "IN"
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "title": "Blinkit Quick Commerce Scraper Input",
+  "description": "Search Blinkit for location-specific public product, price, stock, rating, and discount data.",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "searchQueries": {
+      "title": "Search queries",
+      "description": "One or more Blinkit product searches. Duplicate product IDs are removed across all queries.",
+      "type": "array",
+      "editor": "stringList",
+      "default": ["milk"],
+      "prefill": ["milk", "rice"]
+    },
+    "locationName": {
+      "title": "Location label",
+      "description": "Label saved with every result, such as Mumbai or Bengaluru.",
+      "type": "string",
+      "editor": "textfield",
+      "default": "Mumbai"
+    },
+    "latitude": {
+      "title": "Latitude",
+      "description": "Delivery-area latitude used for Blinkit's location-specific catalog.",
+      "type": "number",
+      "editor": "number",
+      "minimum": -90,
+      "maximum": 90,
+      "default": 19.076
+    },
+    "longitude": {
+      "title": "Longitude",
+      "description": "Delivery-area longitude used for Blinkit's location-specific catalog.",
+      "type": "number",
+      "editor": "number",
+      "minimum": -180,
+      "maximum": 180,
+      "default": 72.8777
+    },
+    "brands": {
+      "title": "Brand filter",
+      "description": "Optional exact brand names. Matching is case-insensitive.",
+      "type": "array",
+      "editor": "stringList",
+      "default": []
+    },
+    "inStockOnly": {
+      "title": "In-stock products only",
+      "description": "Exclude sold-out products.",
+      "type": "boolean",
+      "editor": "checkbox",
+      "default": false
+    },
+    "minPrice": {
+      "title": "Minimum price (INR)",
+      "description": "Only save products at or above this price.",
+      "type": "number",
+      "editor": "number",
+      "minimum": 0,
+      "default": 0
+    },
+    "maxPrice": {
+      "title": "Maximum price (INR)",
+      "description": "Only save products at or below this price.",
+      "type": "number",
+      "editor": "number",
+      "minimum": 0,
+      "default": 1000000
+    },
+    "maxResults": {
+      "title": "Maximum products",
+      "description": "Maximum unique products saved across the complete run.",
+      "type": "integer",
+      "editor": "number",
+      "minimum": 1,
+      "maximum": 500,
+      "default": 100
+    },
+    "maxPagesPerQuery": {
+      "title": "Pages per query",
+      "description": "Maximum Blinkit result payloads processed for each search query.",
+      "type": "integer",
+      "editor": "number",
+      "minimum": 1,
+      "maximum": 40,
+      "default": 10
+    },
+    "proxyConfiguration": {
+      "title": "Proxy configuration",
+      "description": "India residential proxies are recommended for regional inventory and pricing.",
+      "type": "object",
+      "editor": "proxy",
+      "default": {
+        "useApifyProxy": true,
+        "apifyProxyGroups": ["RESIDENTIAL"],
+        "apifyProxyCountry": "IN"
+      },
+      "prefill": {
+        "useApifyProxy": true,
+        "apifyProxyGroups": ["RESIDENTIAL"],
+        "apifyProxyCountry": "IN"
+      }
+    }
+  }
+}

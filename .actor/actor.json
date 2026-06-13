@@ -1,0 +1,33 @@
+{
+  "actorSpecification": 1,
+  "name": "blinkit-quick-commerce-scraper",
+  "title": "Blinkit Quick Commerce Scraper - Products & Prices",
+  "description": "Collect public Blinkit product data by search and location, including prices, MRP, discounts, brands, pack sizes, stock, ratings, images, and product URLs.",
+  "version": "1.0",
+  "dockerfile": "Dockerfile",
+  "input": "../INPUT_SCHEMA.json",
+  "readme": "../README.md",
+  "categories": ["ECOMMERCE", "AUTOMATION", "OTHER"],
+  "pricingInfo": {
+    "pricingModel": "PAY_PER_EVENT",
+    "pricingPerEvent": {
+      "actorChargeEvents": {
+        "product-scraped": {
+          "eventTitle": "Product scraped",
+          "eventDescription": "Charged once for each clean Blinkit product saved to the dataset.",
+          "eventPriceUsd": 0.003,
+          "isPrimaryEvent": true,
+          "isOneTimeEvent": false
+        }
+      }
+    }
+  },
+  "storages": {
+    "dataset": "./dataset_schema.json"
+  },
+  "defaultRunOptions": {
+    "build": "latest",
+    "memoryMbytes": 2048,
+    "timeoutSecs": 14400
+  }
+}
