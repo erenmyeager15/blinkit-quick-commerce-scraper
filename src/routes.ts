@@ -8,9 +8,23 @@ const isObject = (value: unknown): value is JsonObject => (
 
 const asObject = (value: unknown): JsonObject | null => (isObject(value) ? value : null);
 
-const asString = (value: unknown): string | null => (
-    typeof value === 'string' && value.trim() ? value.trim() : null
-);
+const asString = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null;
+    const cleaned = value.replace(/\s+/g, ' ').trim();
+    if (!cleaned || cleaned.toLowerCase() === 'proxied content') return null;
+    return cleaned;
+};
+
+const textOrNA = (value: unknown): string => asString(value) ?? 'N/A';
+
+const cleanUrl = (value: unknown): string | null => {
+    const url = asString(value);
+    if (!url) return null;
+    if (url.startsWith('//')) return `https:${url}`;
+    if (url.startsWith('http://')) return `https://${url.slice('http://'.length)}`;
+    if (url.startsWith('https://')) return url;
+    return null;
+};
 
 const asNumber = (value: unknown): number | null => {
     if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -100,31 +114,24 @@ export const extractProducts = (
 
                 products.set(productId, {
                     source: 'blinkit',
-                    searchQuery,
-                    locationName,
+                    searchQuery: textOrNA(searchQuery),
                     position,
                     productId,
-                    merchantId: asString(cartItem.merchant_id) ?? (
-                        typeof cartItem.merchant_id === 'number' ? String(cartItem.merchant_id) : null
-                    ),
-                    productName,
-                    brand: asString(cartItem.brand) ?? textValue(value.brand_name),
-                    packSize: asString(cartItem.unit) ?? textValue(value.variant),
-                    currentPrice,
-                    marketPrice,
+                    title: productName,
+                    brand: textOrNA(cartItem.brand ?? textValue(value.brand_name)),
+                    price: currentPrice,
+                    mrp: marketPrice,
                     discountPercent,
-                    savingsAmount,
                     currency: 'INR',
-                    inventory,
-                    inStock: !soldOut && (inventory === null || inventory > 0),
-                    merchantType: asString(cartItem.merchant_type),
+                    packSize: textOrNA(cartItem.unit ?? textValue(value.variant)),
+                    category: 'N/A',
                     rating: asNumber(ratingBar?.value) === null
                         ? null
                         : Number((asNumber(ratingBar?.value) as number).toFixed(2)),
                     ratingCount: parseCompactCount(ratingCountText),
-                    ratingCountText,
-                    imageUrl: asString(cartItem.image_url) ?? asString(asObject(value.image)?.url),
+                    inStock: !soldOut && (inventory === null || inventory > 0),
                     productUrl: `https://blinkit.com/prn/${slugify(productName)}/prid/${productId}`,
+                    imageUrl: cleanUrl(cartItem.image_url) ?? cleanUrl(asObject(value.image)?.url),
                     scrapedAt: new Date().toISOString(),
                 });
             }

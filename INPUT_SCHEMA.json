@@ -1,6 +1,6 @@
 {
   "title": "Blinkit Quick Commerce Scraper Input",
-  "description": "Search Blinkit for location-specific public product, price, stock, rating, and discount data.",
+  "description": "Search Blinkit for location-specific public product, price, stock, rating, and discount data. Defaults are set for a low-cost milk price test in Mumbai.",
   "type": "object",
   "schemaVersion": 1,
   "properties": {
@@ -10,7 +10,7 @@
       "type": "array",
       "editor": "stringList",
       "default": ["milk"],
-      "prefill": ["milk", "rice"]
+      "prefill": ["milk"]
     },
     "locationName": {
       "title": "Location label",
@@ -46,10 +46,10 @@
     },
     "inStockOnly": {
       "title": "In-stock products only",
-      "description": "Exclude sold-out products.",
+      "description": "Exclude sold-out products. Keep enabled for smaller, cleaner test runs.",
       "type": "boolean",
       "editor": "checkbox",
-      "default": false
+      "default": true
     },
     "minPrice": {
       "title": "Minimum price (INR)",
@@ -69,25 +69,25 @@
     },
     "maxResults": {
       "title": "Maximum products",
-      "description": "Maximum unique products saved across the complete run.",
+      "description": "Maximum unique products saved across the complete run. Start with 10 to keep usage low.",
       "type": "integer",
       "editor": "number",
       "minimum": 1,
       "maximum": 500,
-      "default": 100
+      "default": 10
     },
     "maxPagesPerQuery": {
       "title": "Pages per query",
-      "description": "Maximum Blinkit result payloads processed for each search query.",
+      "description": "Maximum Blinkit result payloads processed for each search query. Start with 1 for a small test run.",
       "type": "integer",
       "editor": "number",
       "minimum": 1,
       "maximum": 40,
-      "default": 10
+      "default": 1
     },
     "proxyConfiguration": {
       "title": "Proxy configuration",
-      "description": "India residential proxies are recommended for regional inventory and pricing.",
+      "description": "India residential proxies are recommended for regional inventory and pricing. Proxy traffic is billed as platform usage.",
       "type": "object",
       "editor": "proxy",
       "default": {

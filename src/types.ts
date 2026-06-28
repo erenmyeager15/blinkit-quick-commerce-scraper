@@ -26,25 +26,20 @@ export interface RequestData {
 export interface ProductRecord {
     source: 'blinkit';
     searchQuery: string;
-    locationName: string;
     position: number;
-    productId: string;
-    merchantId: string | null;
-    productName: string;
-    brand: string | null;
-    packSize: string | null;
-    currentPrice: number;
-    marketPrice: number | null;
+    productId: string | null;
+    title: string;
+    brand: string;
+    price: number | null;
+    mrp: number | null;
     discountPercent: number | null;
-    savingsAmount: number | null;
-    currency: 'INR';
-    inventory: number | null;
-    inStock: boolean;
-    merchantType: string | null;
+    currency: string;
+    packSize: string;
+    category: string;
     rating: number | null;
     ratingCount: number | null;
-    ratingCountText: string | null;
+    inStock: boolean | null;
+    productUrl: string | null;
     imageUrl: string | null;
-    productUrl: string;
     scrapedAt: string;
 }

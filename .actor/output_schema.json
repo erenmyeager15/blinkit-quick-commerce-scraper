@@ -1,0 +1,14 @@
+{
+  "actorOutputSchemaVersion": 1,
+  "title": "Blinkit Quick Commerce Scraper Output",
+  "description": "Structured Blinkit product records with search queries, location-aware product data, positions, product IDs, titles, brands, prices, MRP, discounts, pack sizes, categories, ratings, availability, image URLs, product URLs, and scraped timestamps.",
+  "type": "object",
+  "properties": {
+    "results": {
+      "type": "string",
+      "title": "Blinkit product records",
+      "description": "Clean dataset items containing public Blinkit product catalog, price, discount, rating, stock, image, and URL data.",
+      "template": "{{links.apiDefaultDatasetUrl}}/items"
+    }
+  }
+}

@@ -2,16 +2,24 @@
   "actorSpecification": 1,
   "name": "blinkit-quick-commerce-scraper",
   "title": "Blinkit Quick Commerce Scraper - Products & Prices",
-  "description": "Collect public Blinkit product data by search and location, including prices, MRP, discounts, brands, pack sizes, stock, ratings, images, and product URLs.",
+  "description": "Collect public Blinkit product data by search and location with clean titles, brands, prices, MRP, discounts, pack sizes, ratings, image URLs, and product URLs.",
   "version": "1.0",
   "dockerfile": "Dockerfile",
   "input": "../INPUT_SCHEMA.json",
   "readme": "../README.md",
+  "output": "./output_schema.json",
   "categories": ["ECOMMERCE", "AUTOMATION", "OTHER"],
   "pricingInfo": {
     "pricingModel": "PAY_PER_EVENT",
     "pricingPerEvent": {
       "actorChargeEvents": {
+        "apify-actor-start": {
+          "eventTitle": "Actor start",
+          "eventDescription": "Charged when the run starts to cover browser startup and the residential proxy session. Number of events depends on memory (one per GB, minimum one).",
+          "eventPriceUsd": 0.001,
+          "isPrimaryEvent": false,
+          "isOneTimeEvent": true
+        },
         "product-scraped": {
           "eventTitle": "Product scraped",
           "eventDescription": "Charged once for each clean Blinkit product saved to the dataset.",
@@ -28,6 +36,6 @@
   "defaultRunOptions": {
     "build": "latest",
     "memoryMbytes": 2048,
-    "timeoutSecs": 14400
+    "timeoutSecs": 3600
   }
 }

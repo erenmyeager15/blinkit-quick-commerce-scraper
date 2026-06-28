@@ -11,11 +11,11 @@ const locationName = input.locationName?.trim() || 'Mumbai';
 const latitude = input.latitude ?? 19.076;
 const longitude = input.longitude ?? 72.8777;
 const brands = new Set((input.brands ?? []).map((value) => value.trim().toLowerCase()).filter(Boolean));
-const inStockOnly = input.inStockOnly ?? false;
+const inStockOnly = input.inStockOnly ?? true;
 const minPrice = Math.max(input.minPrice ?? 0, 0);
 const maxPrice = Math.max(input.maxPrice ?? 1_000_000, minPrice);
-const maxResults = Math.min(Math.max(input.maxResults ?? 100, 1), 500);
-const maxPagesPerQuery = Math.min(Math.max(input.maxPagesPerQuery ?? 10, 1), 40);
+const maxResults = Math.min(Math.max(input.maxResults ?? 10, 1), 500);
+const maxPagesPerQuery = Math.min(Math.max(input.maxPagesPerQuery ?? 1, 1), 40);
 
 if (searchQueries.length === 0) throw new Error('Provide at least one Blinkit search query.');
 
@@ -30,6 +30,8 @@ const proxyConfiguration = await Actor.createProxyConfiguration(
 const seenProductIds = new Set<string>();
 let savedCount = 0;
 let spendingLimitReached = false;
+let fatalBillingError: Error | null = null;
+let failedRequestCount = 0;
 
 const requests = searchQueries.map((searchQuery) => ({
     url: buildSearchUrl(searchQuery),
@@ -43,6 +45,7 @@ const crawler = new PlaywrightCrawler({
     maxConcurrency: 1,
     minConcurrency: 1,
     maxRequestRetries: 3,
+    maxSessionRotations: 3,
     retryOnBlocked: true,
     navigationTimeoutSecs: 90,
     requestHandlerTimeoutSecs: 240,
@@ -70,6 +73,7 @@ const crawler = new PlaywrightCrawler({
         await page.waitForTimeout(1_000 + Math.floor(Math.random() * 2_000));
     }],
     requestHandler: async ({ page, request, session }) => {
+        if (fatalBillingError) throw fatalBillingError;
         if (savedCount >= maxResults || spendingLimitReached) return;
 
         const { searchQuery } = request.userData as RequestData;
@@ -132,22 +136,37 @@ const crawler = new PlaywrightCrawler({
 
         for (const product of products) {
             if (savedCount >= maxResults || spendingLimitReached) break;
-            if (seenProductIds.has(product.productId)) continue;
+            const uniqueKey = product.productId ?? product.productUrl ?? product.title;
+            if (!uniqueKey || seenProductIds.has(uniqueKey)) continue;
             if (brands.size > 0 && (!product.brand || !brands.has(product.brand.toLowerCase()))) continue;
             if (inStockOnly && !product.inStock) continue;
-            if (product.currentPrice < minPrice || product.currentPrice > maxPrice) continue;
+            if (product.price === null || product.price < minPrice || product.price > maxPrice) continue;
 
-            seenProductIds.add(product.productId);
-            await Actor.pushData(product);
-            const chargeResult = await Actor.charge({ eventName: 'product-scraped' });
-            savedCount += 1;
+            try {
+                const chargeResult = await Actor.pushData(product, 'product-scraped');
+                const recordWasSaved = chargeResult.chargedCount > 0 || !chargeResult.eventChargeLimitReached;
 
-            if (chargeResult.eventChargeLimitReached) {
+                if (recordWasSaved) {
+                    seenProductIds.add(uniqueKey);
+                    savedCount += 1;
+                }
+
+                if (chargeResult.eventChargeLimitReached) {
+                    spendingLimitReached = true;
+                    await Actor.setStatusMessage(`Stopped at the user's spending limit after ${savedCount} products`);
+                    log.info('User spending limit reached; stopping before more requests are made.');
+                    await crawler.autoscaledPool?.abort();
+                    break;
+                }
+            } catch (error) {
+                fatalBillingError = error instanceof Error ? error : new Error(String(error));
                 spendingLimitReached = true;
-                await Actor.setStatusMessage(`Stopped at the user's spending limit after ${savedCount} products`);
-                log.info('User spending limit reached; stopping before more requests are made.');
+                await Actor.setStatusMessage('Stopped because product output billing failed.');
+                log.error('Stopping Blinkit run because dataset push with product-scraped charge failed.', {
+                    error: fatalBillingError.message,
+                });
                 await crawler.autoscaledPool?.abort();
-                break;
+                throw fatalBillingError;
             }
         }
 
@@ -161,11 +180,16 @@ const crawler = new PlaywrightCrawler({
         }
     },
     failedRequestHandler: async ({ request }, error) => {
+        failedRequestCount += 1;
         log.error(`Blinkit request failed after retries: ${request.url}`, { error: String(error) });
     },
 });
 
 await crawler.run(requests);
+if (fatalBillingError) throw fatalBillingError;
+if (savedCount === 0 && failedRequestCount > 0) {
+    throw new Error(`Blinkit scrape failed: ${failedRequestCount} request(s) failed and no products were saved.`);
+}
 if (!spendingLimitReached) await Actor.setStatusMessage(`Finished with ${savedCount} unique products`);
 log.info(`Blinkit scrape finished with ${savedCount} unique products.`);
 
