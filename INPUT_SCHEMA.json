@@ -1,6 +1,6 @@
 {
   "title": "Blinkit Quick Commerce Scraper Input",
-  "description": "Search Blinkit for location-specific public product, price, stock, rating, and discount data. Defaults are set for a low-cost milk price test in Mumbai.",
+  "description": "Search Blinkit for location-specific public product, price, stock, rating, and discount data. Defaults save one in-stock milk result in Mumbai for a low-cost test.",
   "type": "object",
   "schemaVersion": 1,
   "properties": {
@@ -10,14 +10,18 @@
       "type": "array",
       "editor": "stringList",
       "default": ["milk"],
-      "prefill": ["milk"]
+      "prefill": ["milk"],
+      "items": { "type": "string" },
+      "minItems": 1,
+      "maxItems": 5
     },
     "locationName": {
       "title": "Location label",
       "description": "Label saved with every result, such as Mumbai or Bengaluru.",
       "type": "string",
       "editor": "textfield",
-      "default": "Mumbai"
+      "default": "Mumbai",
+      "prefill": "Mumbai"
     },
     "latitude": {
       "title": "Latitude",
@@ -26,7 +30,8 @@
       "editor": "number",
       "minimum": -90,
       "maximum": 90,
-      "default": 19.076
+      "default": 19.076,
+      "prefill": 19.076
     },
     "longitude": {
       "title": "Longitude",
@@ -35,21 +40,26 @@
       "editor": "number",
       "minimum": -180,
       "maximum": 180,
-      "default": 72.8777
+      "default": 72.8777,
+      "prefill": 72.8777
     },
     "brands": {
       "title": "Brand filter",
       "description": "Optional exact brand names. Matching is case-insensitive.",
       "type": "array",
       "editor": "stringList",
-      "default": []
+      "default": [],
+      "prefill": [],
+      "items": { "type": "string" },
+      "maxItems": 20
     },
     "inStockOnly": {
       "title": "In-stock products only",
       "description": "Exclude sold-out products. Keep enabled for smaller, cleaner test runs.",
       "type": "boolean",
       "editor": "checkbox",
-      "default": true
+      "default": true,
+      "prefill": true
     },
     "minPrice": {
       "title": "Minimum price (INR)",
@@ -57,7 +67,8 @@
       "type": "number",
       "editor": "number",
       "minimum": 0,
-      "default": 0
+      "default": 0,
+      "prefill": 0
     },
     "maxPrice": {
       "title": "Maximum price (INR)",
@@ -65,16 +76,18 @@
       "type": "number",
       "editor": "number",
       "minimum": 0,
-      "default": 1000000
+      "default": 1000000,
+      "prefill": 1000000
     },
     "maxResults": {
       "title": "Maximum products",
-      "description": "Maximum unique products saved across the complete run. Start with 10 to keep usage low.",
+      "description": "Maximum unique products saved across the complete run. Start with 1 to keep usage low.",
       "type": "integer",
       "editor": "number",
       "minimum": 1,
       "maximum": 500,
-      "default": 10
+      "default": 1,
+      "prefill": 1
     },
     "maxPagesPerQuery": {
       "title": "Pages per query",
@@ -83,7 +96,8 @@
       "editor": "number",
       "minimum": 1,
       "maximum": 40,
-      "default": 1
+      "default": 1,
+      "prefill": 1
     },
     "proxyConfiguration": {
       "title": "Proxy configuration",
@@ -101,5 +115,6 @@
         "apifyProxyCountry": "IN"
       }
     }
-  }
+  },
+  "required": ["searchQueries"]
 }

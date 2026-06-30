@@ -49,8 +49,8 @@ const parseCompactCount = (value: string | null): number | null => {
     const number = Number.parseFloat(normalized);
     if (!Number.isFinite(number)) return null;
     if (/crore|\bcr\b/.test(normalized)) return Math.round(number * 10_000_000);
-    if (/lac|lakh|\bl\b/.test(normalized)) return Math.round(number * 100_000);
-    if (/\bk\b|thousand/.test(normalized)) return Math.round(number * 1_000);
+    if (/lac|lakh|\d(?:\.\d+)?\s*l\b/.test(normalized)) return Math.round(number * 100_000);
+    if (/\d(?:\.\d+)?\s*k\b|thousand/.test(normalized)) return Math.round(number * 1_000);
     return Math.round(number);
 };
 

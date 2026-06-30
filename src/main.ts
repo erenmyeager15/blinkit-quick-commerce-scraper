@@ -1,30 +1,29 @@
 import { Actor, log } from 'apify';
 import { PlaywrightCrawler } from 'crawlee';
+import { normalizeInput } from './input.js';
 import { buildSearchUrl, extractProducts, isBlockedPage } from './routes.js';
 import type { ActorInput, RequestData } from './types.js';
 
 await Actor.init();
 
 const input = (await Actor.getInput<ActorInput>()) ?? {};
-const searchQueries = [...new Set((input.searchQueries ?? ['milk']).map((value) => value.trim()).filter(Boolean))];
-const locationName = input.locationName?.trim() || 'Mumbai';
-const latitude = input.latitude ?? 19.076;
-const longitude = input.longitude ?? 72.8777;
-const brands = new Set((input.brands ?? []).map((value) => value.trim().toLowerCase()).filter(Boolean));
-const inStockOnly = input.inStockOnly ?? true;
-const minPrice = Math.max(input.minPrice ?? 0, 0);
-const maxPrice = Math.max(input.maxPrice ?? 1_000_000, minPrice);
-const maxResults = Math.min(Math.max(input.maxResults ?? 10, 1), 500);
-const maxPagesPerQuery = Math.min(Math.max(input.maxPagesPerQuery ?? 1, 1), 40);
-
-if (searchQueries.length === 0) throw new Error('Provide at least one Blinkit search query.');
+const normalizedInput = normalizeInput(input);
+const {
+    searchQueries,
+    locationName,
+    latitude,
+    longitude,
+    inStockOnly,
+    minPrice,
+    maxPrice,
+    maxResults,
+    maxPagesPerQuery,
+    proxyConfiguration: proxyInput,
+} = normalizedInput;
+const brands = new Set(normalizedInput.brands.map((value) => value.toLowerCase()));
 
 const proxyConfiguration = await Actor.createProxyConfiguration(
-    input.proxyConfiguration ?? {
-        useApifyProxy: true,
-        apifyProxyGroups: ['RESIDENTIAL'],
-        apifyProxyCountry: 'IN',
-    },
+    proxyInput,
 );
 
 const seenProductIds = new Set<string>();
@@ -187,8 +186,9 @@ const crawler = new PlaywrightCrawler({
 
 await crawler.run(requests);
 if (fatalBillingError) throw fatalBillingError;
-if (savedCount === 0 && failedRequestCount > 0) {
-    throw new Error(`Blinkit scrape failed: ${failedRequestCount} request(s) failed and no products were saved.`);
+if (savedCount === 0 && !spendingLimitReached) {
+    const failedPart = failedRequestCount > 0 ? `${failedRequestCount} request(s) failed and ` : '';
+    throw new Error(`Blinkit scrape failed: ${failedPart}no products were saved. The source may be blocked, empty, or filtered out.`);
 }
 if (!spendingLimitReached) await Actor.setStatusMessage(`Finished with ${savedCount} unique products`);
 log.info(`Blinkit scrape finished with ${savedCount} unique products.`);
