@@ -1,10 +1,8 @@
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { Actor, log } from 'apify';
-import { PlaywrightCrawler } from 'crawlee';
+import { fetchSearchPage, PAGE_SIZE, warmUpSession } from './blinkitApi.js';
 import { normalizeInput } from './input.js';
-import { buildSearchUrl, extractProducts, isBlockedPage } from './routes.js';
-import type { ActorInput, RequestData } from './types.js';
+import { extractProducts, isBlockedPage } from './routes.js';
+import type { ActorInput, ProductRecord } from './types.js';
 
 await Actor.init();
 
@@ -24,243 +22,152 @@ const {
 } = normalizedInput;
 const brands = new Set(normalizedInput.brands.map((value) => value.toLowerCase()));
 
-const proxyConfiguration = await Actor.createProxyConfiguration(
-    proxyInput,
-);
+const proxyConfiguration = await Actor.createProxyConfiguration(proxyInput);
 
 const seenProductIds = new Set<string>();
 let savedCount = 0;
 let spendingLimitReached = false;
 let fatalBillingError: Error | null = null;
-let failedRequestCount = 0;
+const skippedQueries: Array<{ query: string; reason: string }> = [];
 
-const requests = searchQueries.map((searchQuery) => ({
-    url: buildSearchUrl(searchQuery),
-    uniqueKey: `blinkit-${searchQuery.toLowerCase()}`,
-    userData: { searchQuery } satisfies RequestData,
-}));
-
-/**
- * Blinkit is a JavaScript app whose catalogue arrives over XHR, so scripts and API calls
- * must be allowed. Images, media, fonts and stylesheets carry no data and are the bulk of
- * residential-proxy bandwidth on a grocery catalogue.
- */
-const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font', 'stylesheet']);
-
-/** Keeps infinite-scroll paging inside requestHandlerTimeoutSecs. */
-const SCROLL_BUDGET_MS = 150_000;
-
-type SearchCapture = {
-    payloads: unknown[];
-    tasks: Set<Promise<void>>;
-    detach: () => void;
-};
-
-/** Payloads are captured from the first navigation, keyed per page. */
-const captures = new WeakMap<object, SearchCapture>();
-
-const crawler = new PlaywrightCrawler({
-    proxyConfiguration,
-    headless: false,
-    maxConcurrency: 1,
-    minConcurrency: 1,
-    maxRequestRetries: 3,
-    maxSessionRotations: 3,
-    retryOnBlocked: true,
-    navigationTimeoutSecs: 90,
-    requestHandlerTimeoutSecs: 240,
-    maxRequestsPerCrawl: requests.length,
-    sessionPoolOptions: {
-        maxPoolSize: 30,
-        // Deliberately empty: Crawlee warns that setting blockedStatusCodes alongside
-        // retryOnBlocked stops retryOnBlocked working as expected. Blocking is detected by
-        // retryOnBlocked plus the challenge-text check in isBlockedPage.
-        blockedStatusCodes: [],
-        sessionOptions: { maxUsageCount: 10 },
-    },
-    browserPoolOptions: { useFingerprints: true },
-    launchContext: {
-        useChrome: true,
-        // A persistent profile keeps Blinkit's JavaScript bundles in the browser's disk
-        // cache, so the second and later queries in a run re-use them instead of pulling
-        // roughly 2.4 MB through the residential proxy again.
-        userDataDir: join(tmpdir(), 'blinkit-browser-profile'),
-        launchOptions: {
-            args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-dev-shm-usage'],
-        },
-    },
-    preNavigationHooks: [async ({ page }, gotoOptions) => {
-        // Listen before the first navigation so the search payloads are captured on the way
-        // in. Previously the page had to be reloaded to catch them, paying for it twice.
-        const payloads: unknown[] = [];
-        const tasks = new Set<Promise<void>>();
-        const responseHandler = (response: Awaited<ReturnType<typeof page.waitForResponse>>): void => {
-            const url = response.url();
-            if (response.status() !== 200 || !url.includes('/v1/layout/search')) return;
-            const task = response.json()
-                .then((payload: unknown) => { payloads.push(payload); })
-                .catch(() => undefined)
-                .finally(() => { tasks.delete(task); });
-            tasks.add(task);
-        };
-
-        page.on('response', responseHandler);
-        captures.set(page, {
-            payloads,
-            tasks,
-            detach: () => page.off('response', responseHandler),
-        });
-
-        await page.route('**/*', async (route) => {
-            if (BLOCKED_RESOURCE_TYPES.has(route.request().resourceType())) {
-                await route.abort().catch(() => { /* navigation already settled */ });
-                return;
-            }
-            await route.continue().catch(() => { /* navigation already settled */ });
-        }).catch(() => { /* best effort */ });
-
-        await page.context().grantPermissions(['geolocation'], { origin: 'https://blinkit.com' });
-        await page.context().setGeolocation({ latitude, longitude });
-        await page.setExtraHTTPHeaders({
-            'accept-language': 'en-IN,en;q=0.9',
-        });
-        page.setDefaultTimeout(15_000);
-        if (gotoOptions) gotoOptions.waitUntil = 'domcontentloaded';
-        await page.waitForTimeout(600 + Math.floor(Math.random() * 900));
-    }],
-    requestHandler: async ({ page, request, session }) => {
-        if (fatalBillingError) throw fatalBillingError;
-        if (savedCount >= maxResults || spendingLimitReached) return;
-
-        const { searchQuery } = request.userData as RequestData;
-        const capture = captures.get(page);
-        if (!capture) throw new Error('Blinkit response capture was not initialised for this page.');
-        const { payloads, tasks: responseTasks } = capture;
-
-        // Proceed as soon as the catalogue arrives instead of always sleeping for a fixed
-        // window. Falls through to the block checks below if nothing shows up.
-        const waitForPayloads = async (timeoutMs: number): Promise<void> => {
-            const deadline = Date.now() + timeoutMs;
-            while (payloads.length === 0 && Date.now() < deadline) {
-                await page.waitForTimeout(250);
-            }
-        };
-
-        // Waiting is far cheaper than a retry: idle seconds cost only compute, while a failed
-        // attempt repeats the whole navigation and its bandwidth. If the catalogue still has
-        // not arrived, reload once against a warm cache rather than failing the request.
-        await waitForPayloads(20_000);
-        if (payloads.length === 0) {
-            log.info(`No search payload on first load for "${searchQuery}"; reloading once.`);
-            await page.reload({ waitUntil: 'domcontentloaded', timeout: 90_000 });
-            await waitForPayloads(15_000);
-        }
-
-        let title = await page.title();
-        let body = await page.locator('body').innerText().catch(() => '');
-        if (await isBlockedPage(title, body)) {
-            session?.markBad();
-            throw new Error(`Blinkit challenge page detected for ${request.url}`);
-        }
-
-        if (payloads.length === 0 && !body.toLowerCase().includes(searchQuery.toLowerCase())) {
-            await waitForPayloads(5_000);
-            title = await page.title();
-            body = await page.locator('body').innerText().catch(() => '');
-        }
-
-        if (await isBlockedPage(title, body)) {
-            session?.markBad();
-            throw new Error(`Blinkit challenge page detected for ${request.url}`);
-        }
-
-        if (payloads.length === 0 && !body.toLowerCase().includes(searchQuery.toLowerCase())) {
-            throw new Error(`Blinkit did not return a usable search page for "${searchQuery}".`);
-        }
-
-        // A wall-clock deadline keeps a high maxPagesPerQuery from outliving
-        // requestHandlerTimeoutSecs, which used to abort the whole request.
-        let idleRounds = 0;
-        const scrollDeadline = Date.now() + SCROLL_BUDGET_MS;
-        for (let round = 0; round < maxPagesPerQuery * 3 && payloads.length < maxPagesPerQuery; round += 1) {
-            if (Date.now() > scrollDeadline) {
-                log.info(`Scroll budget reached for "${searchQuery}" after ${payloads.length} payload(s).`);
-                break;
-            }
-            const before = payloads.length;
-            await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-            await page.waitForTimeout(800 + Math.floor(Math.random() * 800));
-            idleRounds = payloads.length === before ? idleRounds + 1 : 0;
-            if (idleRounds >= 3) break;
-        }
-
-        await Promise.allSettled([...responseTasks]);
-        capture.detach();
-        captures.delete(page);
-
-        const products = extractProducts(payloads.slice(0, maxPagesPerQuery), searchQuery, locationName);
-        if (products.length === 0) {
-            session?.markBad();
-            throw new Error(`No Blinkit product records found for "${searchQuery}".`);
-        }
-
-        for (const product of products) {
-            if (savedCount >= maxResults || spendingLimitReached) break;
-            const uniqueKey = product.productId ?? product.productUrl ?? product.title;
-            if (!uniqueKey || seenProductIds.has(uniqueKey)) continue;
-            if (brands.size > 0 && (!product.brand || !brands.has(product.brand.toLowerCase()))) continue;
-            if (inStockOnly && !product.inStock) continue;
-            if (product.price === null || product.price < minPrice || product.price > maxPrice) continue;
-
-            try {
-                const chargeResult = await Actor.pushData(product, 'product-scraped');
-                const recordWasSaved = chargeResult.chargedCount > 0 || !chargeResult.eventChargeLimitReached;
-
-                if (recordWasSaved) {
-                    seenProductIds.add(uniqueKey);
-                    savedCount += 1;
-                }
-
-                if (chargeResult.eventChargeLimitReached) {
-                    spendingLimitReached = true;
-                    await Actor.setStatusMessage(`Stopped at the user's spending limit after ${savedCount} products`);
-                    log.info('User spending limit reached; stopping before more requests are made.');
-                    await crawler.autoscaledPool?.abort();
-                    break;
-                }
-            } catch (error) {
-                fatalBillingError = error instanceof Error ? error : new Error(String(error));
-                spendingLimitReached = true;
-                await Actor.setStatusMessage('Stopped because product output billing failed.');
-                log.error('Stopping Blinkit run because dataset push with product-scraped charge failed.', {
-                    error: fatalBillingError.message,
-                });
-                await crawler.autoscaledPool?.abort();
-                throw fatalBillingError;
-            }
-        }
-
-        log.info(`Processed Blinkit search "${searchQuery}"`, {
-            payloadsCaptured: payloads.length,
-            productsFound: products.length,
-            totalSaved: savedCount,
-        });
-        if (!spendingLimitReached) {
-            await Actor.setStatusMessage(`Saved ${savedCount}/${maxResults} Blinkit products`);
-        }
-    },
-    failedRequestHandler: async ({ request }, error) => {
-        failedRequestCount += 1;
-        log.error(`Blinkit request failed after retries: ${request.url}`, { error: String(error) });
-    },
+log.info('Starting Blinkit scrape', {
+    searchQueries,
+    locationName,
+    latitude,
+    longitude,
+    maxResults,
+    maxPagesPerQuery,
 });
 
-await crawler.run(requests);
-if (fatalBillingError) throw fatalBillingError;
-if (savedCount === 0 && !spendingLimitReached) {
-    const failedPart = failedRequestCount > 0 ? `${failedRequestCount} request(s) failed and ` : '';
-    throw new Error(`Blinkit scrape failed: ${failedPart}no products were saved. The source may be blocked, empty, or filtered out.`);
+/** Collects the search payloads for one query, stopping as soon as enough products exist. */
+async function collectPayloadsForQuery(query: string, queryIndex: number, remaining: number): Promise<unknown[]> {
+    const payloads: unknown[] = [];
+    let lastError: unknown = null;
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+            const proxyUrl = await proxyConfiguration?.newUrl(`blinkit_${queryIndex}_${attempt}`);
+            const { session, statusCode, html } = await warmUpSession(query, proxyUrl);
+
+            if (statusCode >= 400) throw new Error(`Blinkit storefront returned HTTP ${statusCode}`);
+            if (await isBlockedPage('', html)) throw new Error('Blinkit storefront returned a challenge page');
+
+            payloads.length = 0;
+            for (let pageIndex = 0; pageIndex < maxPagesPerQuery; pageIndex += 1) {
+                const page = await fetchSearchPage({
+                    query,
+                    latitude,
+                    longitude,
+                    session,
+                    pageIndex,
+                    proxyUrl,
+                });
+
+                if (page.statusCode >= 400) {
+                    if (pageIndex === 0) throw new Error(`Blinkit search API returned HTTP ${page.statusCode}`);
+                    log.warning(`Stopping "${query}" at page ${pageIndex + 1}: HTTP ${page.statusCode}`);
+                    break;
+                }
+                if (await isBlockedPage('', page.bodyText)) {
+                    throw new Error('Blinkit search API returned a challenge page');
+                }
+                if (page.payload === null) {
+                    if (pageIndex === 0) throw new Error('Blinkit search API returned an unreadable response');
+                    break;
+                }
+
+                const before = extractProducts(payloads, query, locationName).length;
+                payloads.push(page.payload);
+                const after = extractProducts(payloads, query, locationName).length;
+
+                // A page that adds no new products means the result set is exhausted.
+                if (after === before) break;
+                if (after >= remaining) break;
+                if (after - before < PAGE_SIZE / 2) break;
+            }
+
+            if (payloads.length === 0) throw new Error('Blinkit returned no search payloads');
+            return payloads;
+        } catch (error) {
+            lastError = error;
+            log.warning(`Blinkit attempt ${attempt}/3 failed for "${query}"`, { error: String(error) });
+            if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 1_000 * attempt));
+        }
+    }
+
+    const reason = lastError instanceof Error ? lastError.message : String(lastError);
+    skippedQueries.push({ query, reason });
+    log.warning(`Skipping "${query}" after repeated failures`, { reason });
+    return [];
 }
+
+for (const [queryIndex, searchQuery] of searchQueries.entries()) {
+    if (savedCount >= maxResults || spendingLimitReached || fatalBillingError) break;
+
+    const remaining = maxResults - savedCount;
+    const payloads = await collectPayloadsForQuery(searchQuery, queryIndex, remaining);
+    if (payloads.length === 0) continue;
+
+    const products: ProductRecord[] = extractProducts(payloads, searchQuery, locationName);
+    log.info(`Parsed Blinkit search "${searchQuery}"`, {
+        payloadsCaptured: payloads.length,
+        productsFound: products.length,
+    });
+
+    for (const product of products) {
+        if (savedCount >= maxResults || spendingLimitReached) break;
+
+        const uniqueKey = product.productId ?? product.productUrl ?? product.title;
+        if (!uniqueKey || seenProductIds.has(uniqueKey)) continue;
+        if (brands.size > 0 && (!product.brand || !brands.has(product.brand.toLowerCase()))) continue;
+        if (inStockOnly && !product.inStock) continue;
+        if (product.price === null || product.price < minPrice || product.price > maxPrice) continue;
+
+        try {
+            // Push and charge atomically so records beyond the user's charge limit are not
+            // saved for free and billing failures stop the run immediately.
+            const chargeResult = await Actor.pushData(product, 'product-scraped');
+            const recordWasSaved = chargeResult.chargedCount > 0 || !chargeResult.eventChargeLimitReached;
+
+            if (recordWasSaved) {
+                seenProductIds.add(uniqueKey);
+                savedCount += 1;
+            }
+
+            if (chargeResult.eventChargeLimitReached) {
+                spendingLimitReached = true;
+                await Actor.setStatusMessage(`Stopped at the user's spending limit after ${savedCount} products`);
+                log.info('User spending limit reached; stopping before more requests are made.');
+                break;
+            }
+        } catch (error) {
+            fatalBillingError = error instanceof Error ? error : new Error(String(error));
+            spendingLimitReached = true;
+            await Actor.setStatusMessage('Stopped because product output billing failed.');
+            log.error('Stopping Blinkit run because dataset push with product-scraped charge failed.', {
+                error: fatalBillingError.message,
+            });
+            break;
+        }
+    }
+
+    if (!spendingLimitReached && !fatalBillingError) {
+        await Actor.setStatusMessage(`Saved ${savedCount}/${maxResults} Blinkit products`);
+        const moreQueriesLeft = queryIndex < searchQueries.length - 1;
+        if (moreQueriesLeft && savedCount < maxResults) {
+            await new Promise((resolve) => setTimeout(resolve, 500 + Math.floor(Math.random() * 1_000)));
+        }
+    }
+}
+
+if (fatalBillingError) throw fatalBillingError;
+
+if (savedCount === 0 && !spendingLimitReached) {
+    const reasons = skippedQueries.map((item) => `${item.query}: ${item.reason}`).join('; ');
+    throw new Error(`Blinkit scrape failed: no products were saved.${reasons ? ` Skipped: ${reasons}` : ''} The source may be blocked, empty, or filtered out.`);
+}
+
+if (skippedQueries.length > 0) log.warning('Some Blinkit queries were skipped', { skippedQueries });
 if (!spendingLimitReached) await Actor.setStatusMessage(`Finished with ${savedCount} unique products`);
 log.info(`Blinkit scrape finished with ${savedCount} unique products.`);
 

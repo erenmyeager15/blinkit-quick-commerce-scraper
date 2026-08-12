@@ -15,8 +15,7 @@
   },
   "dependencies": {
     "apify": "^3.4.4",
-    "crawlee": "^3.15.3",
-    "playwright": "^1.55.1"
+    "got-scraping": "^4.2.1"
   },
   "devDependencies": {
     "typescript": "^5.9.2"
