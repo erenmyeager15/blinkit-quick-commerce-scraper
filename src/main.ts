@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Actor, log } from 'apify';
 import { PlaywrightCrawler } from 'crawlee';
 import { normalizeInput } from './input.js';
@@ -79,6 +81,10 @@ const crawler = new PlaywrightCrawler({
     browserPoolOptions: { useFingerprints: true },
     launchContext: {
         useChrome: true,
+        // A persistent profile keeps Blinkit's JavaScript bundles in the browser's disk
+        // cache, so the second and later queries in a run re-use them instead of pulling
+        // roughly 2.4 MB through the residential proxy again.
+        userDataDir: join(tmpdir(), 'blinkit-browser-profile'),
         launchOptions: {
             args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-dev-shm-usage'],
         },

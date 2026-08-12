@@ -92,8 +92,11 @@ export function normalizeInput(raw: ActorInput = {}): NormalizedInput {
         inStockOnly: asBoolean(raw.inStockOnly, 'inStockOnly', true),
         minPrice,
         maxPrice,
-        maxResults: asIntInRange(raw.maxResults, 'maxResults', 1, 1, 500),
-        maxPagesPerQuery: asIntInRange(raw.maxPagesPerQuery, 'maxPagesPerQuery', 1, 1, 40),
+        // Defaults deliberately return a useful page of results. The browser boot is a fixed
+        // cost per query (~2.4 MB of proxy traffic), so a 1-result run costs far more to
+        // produce than it bills, and shows the user almost nothing.
+        maxResults: asIntInRange(raw.maxResults, 'maxResults', 50, 1, 500),
+        maxPagesPerQuery: asIntInRange(raw.maxPagesPerQuery, 'maxPagesPerQuery', 5, 1, 40),
         proxyConfiguration: asProxyConfiguration(raw.proxyConfiguration),
     };
 }

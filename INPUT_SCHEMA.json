@@ -81,23 +81,23 @@
     },
     "maxResults": {
       "title": "Maximum products",
-      "description": "Maximum unique products saved across the complete run. Start with 1 to keep usage low.",
+      "description": "Maximum unique products saved across the complete run. Each query loads the Blinkit app once, so asking for more products per query is far cheaper per product than several tiny runs.",
       "type": "integer",
       "editor": "number",
       "minimum": 1,
       "maximum": 500,
-      "default": 1,
-      "prefill": 1
+      "default": 50,
+      "prefill": 50
     },
     "maxPagesPerQuery": {
       "title": "Pages per query",
-      "description": "Maximum Blinkit result payloads processed for each search query. Start with 1 for a small test run.",
+      "description": "Maximum Blinkit result payloads processed for each search query. Each payload holds roughly 12 products.",
       "type": "integer",
       "editor": "number",
       "minimum": 1,
       "maximum": 40,
-      "default": 1,
-      "prefill": 1
+      "default": 5,
+      "prefill": 5
     },
     "proxyConfiguration": {
       "title": "Proxy configuration",

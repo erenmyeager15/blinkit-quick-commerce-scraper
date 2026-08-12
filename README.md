@@ -39,8 +39,8 @@ Use this input for a low-cost first run:
   "inStockOnly": true,
   "minPrice": 0,
   "maxPrice": 1000000,
-  "maxResults": 1,
-  "maxPagesPerQuery": 1,
+  "maxResults": 50,
+  "maxPagesPerQuery": 5,
   "proxyConfiguration": {
     "useApifyProxy": true,
     "apifyProxyGroups": ["RESIDENTIAL"],
@@ -63,8 +63,8 @@ After the run finishes, open the dataset and export the `Products` view.
 | `inStockOnly` | boolean | `true` | Save only products that appear available. |
 | `minPrice` | number | `0` | Minimum INR price to save. |
 | `maxPrice` | number | `1000000` | Maximum INR price to save. |
-| `maxResults` | integer | `1` | Maximum unique products saved across the run. Range: 1-500. |
-| `maxPagesPerQuery` | integer | `1` | Maximum structured search payloads processed per query. Range: 1-40. |
+| `maxResults` | integer | `50` | Maximum unique products saved across the run. Range: 1-500. |
+| `maxPagesPerQuery` | integer | `5` | Maximum structured search payloads processed per query. Range: 1-40. |
 | `proxyConfiguration` | object | Residential India | Apify proxy settings. Residential India proxy is recommended for regional prices and availability. |
 
 ## Output
@@ -111,8 +111,8 @@ Platform usage, such as browser compute and proxy traffic, may also be charged b
 
 ## Cost control
 
-- Start with one query and `maxResults: 1`.
-- Keep `maxPagesPerQuery: 1` for the first test.
+- Each query loads the Blinkit app once, which is the main fixed cost of a run. Asking one query for 100 products is far cheaper per product than ten runs of 10 products.
+- Start with one query and the default `maxResults: 50`.
 - Keep `inStockOnly` enabled unless you need unavailable products.
 - Add more queries, pages, or cities only after checking the output.
 - Use the run's maximum cost setting if you want a strict spending cap.
