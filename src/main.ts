@@ -140,7 +140,15 @@ const crawler = new PlaywrightCrawler({
             }
         };
 
-        await waitForPayloads(8_000);
+        // Waiting is far cheaper than a retry: idle seconds cost only compute, while a failed
+        // attempt repeats the whole navigation and its bandwidth. If the catalogue still has
+        // not arrived, reload once against a warm cache rather than failing the request.
+        await waitForPayloads(20_000);
+        if (payloads.length === 0) {
+            log.info(`No search payload on first load for "${searchQuery}"; reloading once.`);
+            await page.reload({ waitUntil: 'domcontentloaded', timeout: 90_000 });
+            await waitForPayloads(15_000);
+        }
 
         let title = await page.title();
         let body = await page.locator('body').innerText().catch(() => '');
