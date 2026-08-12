@@ -29,7 +29,7 @@
         "product-scraped": {
           "eventTitle": "Product scraped",
           "eventDescription": "Charged once for each clean Blinkit product saved to the dataset.",
-          "eventPriceUsd": 0.003,
+          "eventPriceUsd": 0.0015,
           "isPrimaryEvent": true,
           "isOneTimeEvent": false
         }

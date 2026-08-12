@@ -102,16 +102,18 @@ This Actor uses Apify Pay Per Event pricing.
 
 | Event | Price |
 | --- | ---: |
-| `product-scraped` | `$0.003` per saved product row |
+| `product-scraped` | `$0.0015` per saved product row, or `$1.50` per 1,000 |
 | `apify-actor-start` | `$0.00005` per GB when the Actor starts |
 
 Products are charged only when a clean product record is saved to the dataset. The Actor uses atomic dataset charging, so the run stops before saving unpaid records after the user's maximum charge is reached.
 
-Platform usage, such as browser compute and proxy traffic, may also be charged by Apify depending on the run configuration. Residential India proxy is recommended for Blinkit reliability and regional pricing, but it can increase platform usage cost.
+The Actor start event stays at Apify's default price, so there is no large per-run fee on top of the per-product price. Frequent small monitoring runs stay cheap.
+
+Platform usage, such as compute and proxy traffic, may also be charged by Apify depending on the run configuration. The Actor runs without a browser, so a run transfers well under a megabyte through the proxy. Residential India proxy is recommended for Blinkit reliability and regional pricing.
 
 ## Cost control
 
-- Each query loads the Blinkit app once, which is the main fixed cost of a run. Asking one query for 100 products is far cheaper per product than ten runs of 10 products.
+- Cost scales with the number of products you save, so you are only charged for rows you keep.
 - Start with one query and the default `maxResults: 50`.
 - Keep `inStockOnly` enabled unless you need unavailable products.
 - Add more queries, pages, or cities only after checking the output.
@@ -121,8 +123,8 @@ Platform usage, such as browser compute and proxy traffic, may also be charged b
 
 Blinkit prices and availability vary by delivery area and can change frequently. The Actor includes:
 
-- Browser-based capture of Blinkit's public structured search responses
-- Geolocation setup from the latitude/longitude input
+- Direct requests to Blinkit's public structured search responses, with no browser
+- Delivery location sent as latitude/longitude with every request, so prices and stock match the area you ask for
 - India residential proxy defaults
 - Block/challenge detection with retries and session rotation
 - Deduplication by product ID, URL, or title
