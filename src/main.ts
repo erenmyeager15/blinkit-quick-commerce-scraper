@@ -38,6 +38,25 @@ const requests = searchQueries.map((searchQuery) => ({
     userData: { searchQuery } satisfies RequestData,
 }));
 
+/**
+ * Blinkit is a JavaScript app whose catalogue arrives over XHR, so scripts and API calls
+ * must be allowed. Images, media, fonts and stylesheets carry no data and are the bulk of
+ * residential-proxy bandwidth on a grocery catalogue.
+ */
+const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font', 'stylesheet']);
+
+/** Keeps infinite-scroll paging inside requestHandlerTimeoutSecs. */
+const SCROLL_BUDGET_MS = 150_000;
+
+type SearchCapture = {
+    payloads: unknown[];
+    tasks: Set<Promise<void>>;
+    detach: () => void;
+};
+
+/** Payloads are captured from the first navigation, keyed per page. */
+const captures = new WeakMap<object, SearchCapture>();
+
 const crawler = new PlaywrightCrawler({
     proxyConfiguration,
     headless: false,
@@ -51,6 +70,9 @@ const crawler = new PlaywrightCrawler({
     maxRequestsPerCrawl: requests.length,
     sessionPoolOptions: {
         maxPoolSize: 30,
+        // Deliberately empty: Crawlee warns that setting blockedStatusCodes alongside
+        // retryOnBlocked stops retryOnBlocked working as expected. Blocking is detected by
+        // retryOnBlocked plus the challenge-text check in isBlockedPage.
         blockedStatusCodes: [],
         sessionOptions: { maxUsageCount: 10 },
     },
@@ -62,6 +84,35 @@ const crawler = new PlaywrightCrawler({
         },
     },
     preNavigationHooks: [async ({ page }, gotoOptions) => {
+        // Listen before the first navigation so the search payloads are captured on the way
+        // in. Previously the page had to be reloaded to catch them, paying for it twice.
+        const payloads: unknown[] = [];
+        const tasks = new Set<Promise<void>>();
+        const responseHandler = (response: Awaited<ReturnType<typeof page.waitForResponse>>): void => {
+            const url = response.url();
+            if (response.status() !== 200 || !url.includes('/v1/layout/search')) return;
+            const task = response.json()
+                .then((payload: unknown) => { payloads.push(payload); })
+                .catch(() => undefined)
+                .finally(() => { tasks.delete(task); });
+            tasks.add(task);
+        };
+
+        page.on('response', responseHandler);
+        captures.set(page, {
+            payloads,
+            tasks,
+            detach: () => page.off('response', responseHandler),
+        });
+
+        await page.route('**/*', async (route) => {
+            if (BLOCKED_RESOURCE_TYPES.has(route.request().resourceType())) {
+                await route.abort().catch(() => { /* navigation already settled */ });
+                return;
+            }
+            await route.continue().catch(() => { /* navigation already settled */ });
+        }).catch(() => { /* best effort */ });
+
         await page.context().grantPermissions(['geolocation'], { origin: 'https://blinkit.com' });
         await page.context().setGeolocation({ latitude, longitude });
         await page.setExtraHTTPHeaders({
@@ -69,29 +120,27 @@ const crawler = new PlaywrightCrawler({
         });
         page.setDefaultTimeout(15_000);
         if (gotoOptions) gotoOptions.waitUntil = 'domcontentloaded';
-        await page.waitForTimeout(1_000 + Math.floor(Math.random() * 2_000));
+        await page.waitForTimeout(600 + Math.floor(Math.random() * 900));
     }],
     requestHandler: async ({ page, request, session }) => {
         if (fatalBillingError) throw fatalBillingError;
         if (savedCount >= maxResults || spendingLimitReached) return;
 
         const { searchQuery } = request.userData as RequestData;
-        const payloads: unknown[] = [];
-        const responseTasks = new Set<Promise<void>>();
+        const capture = captures.get(page);
+        if (!capture) throw new Error('Blinkit response capture was not initialised for this page.');
+        const { payloads, tasks: responseTasks } = capture;
 
-        const responseHandler = (response: Awaited<ReturnType<typeof page.waitForResponse>>): void => {
-            const url = response.url();
-            if (response.status() !== 200 || !url.includes('/v1/layout/search')) return;
-            const task = response.json()
-                .then((payload: unknown) => { payloads.push(payload); })
-                .catch(() => undefined)
-                .finally(() => { responseTasks.delete(task); });
-            responseTasks.add(task);
+        // Proceed as soon as the catalogue arrives instead of always sleeping for a fixed
+        // window. Falls through to the block checks below if nothing shows up.
+        const waitForPayloads = async (timeoutMs: number): Promise<void> => {
+            const deadline = Date.now() + timeoutMs;
+            while (payloads.length === 0 && Date.now() < deadline) {
+                await page.waitForTimeout(250);
+            }
         };
 
-        page.on('response', responseHandler);
-        await page.reload({ waitUntil: 'domcontentloaded', timeout: 90_000 });
-        await page.waitForTimeout(5_000);
+        await waitForPayloads(8_000);
 
         let title = await page.title();
         let body = await page.locator('body').innerText().catch(() => '');
@@ -101,7 +150,7 @@ const crawler = new PlaywrightCrawler({
         }
 
         if (payloads.length === 0 && !body.toLowerCase().includes(searchQuery.toLowerCase())) {
-            await page.waitForTimeout(5_000);
+            await waitForPayloads(5_000);
             title = await page.title();
             body = await page.locator('body').innerText().catch(() => '');
         }
@@ -115,17 +164,25 @@ const crawler = new PlaywrightCrawler({
             throw new Error(`Blinkit did not return a usable search page for "${searchQuery}".`);
         }
 
+        // A wall-clock deadline keeps a high maxPagesPerQuery from outliving
+        // requestHandlerTimeoutSecs, which used to abort the whole request.
         let idleRounds = 0;
+        const scrollDeadline = Date.now() + SCROLL_BUDGET_MS;
         for (let round = 0; round < maxPagesPerQuery * 3 && payloads.length < maxPagesPerQuery; round += 1) {
+            if (Date.now() > scrollDeadline) {
+                log.info(`Scroll budget reached for "${searchQuery}" after ${payloads.length} payload(s).`);
+                break;
+            }
             const before = payloads.length;
             await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-            await page.waitForTimeout(1_500 + Math.floor(Math.random() * 1_500));
+            await page.waitForTimeout(800 + Math.floor(Math.random() * 800));
             idleRounds = payloads.length === before ? idleRounds + 1 : 0;
             if (idleRounds >= 3) break;
         }
 
         await Promise.allSettled([...responseTasks]);
-        page.off('response', responseHandler);
+        capture.detach();
+        captures.delete(page);
 
         const products = extractProducts(payloads.slice(0, maxPagesPerQuery), searchQuery, locationName);
         if (products.length === 0) {
