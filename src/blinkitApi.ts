@@ -31,43 +31,13 @@ export interface SearchPageResult {
     bodyText: string;
 }
 
-/** Joins Set-Cookie values into a request cookie header, keeping only name=value. */
-export const cookieHeader = (setCookie: string[] | string | undefined): string => {
-    const values = Array.isArray(setCookie) ? setCookie : setCookie ? [setCookie] : [];
-    return values.map((value) => value.split(';')[0]).filter(Boolean).join('; ');
-};
-
-/**
- * Fetches the public storefront once to collect the cookies Blinkit's edge expects
- * (including __cf_bm). This replaces booting a browser: the search API accepts these
- * cookies directly, which is the same approach the BigBasket Actor uses.
- */
-export async function warmUpSession(query: string, proxyUrl?: string): Promise<{
-    session: BlinkitSession;
-    statusCode: number;
-    html: string;
-}> {
-    const response = await gotScraping({
-        url: buildSearchUrl(query),
-        proxyUrl,
-        headers: {
-            'user-agent': USER_AGENT,
-            'accept-language': 'en-IN,en;q=0.9',
-            accept: 'text/html,application/xhtml+xml,*/*;q=0.8',
-        },
-        responseType: 'text',
-        throwHttpErrors: false,
-        timeout: { request: REQUEST_TIMEOUT_MS },
-    });
-
+/** A new proxy attempt gets a fresh Blinkit request identity. The public search API
+ * currently works without first visiting the storefront, which now often returns 403. */
+export function createSearchSession(): BlinkitSession {
     return {
-        session: {
-            cookies: cookieHeader(response.headers['set-cookie']),
-            deviceId: randomUUID(),
-            sessionUuid: randomUUID(),
-        },
-        statusCode: response.statusCode,
-        html: response.body ?? '',
+        cookies: '',
+        deviceId: randomUUID(),
+        sessionUuid: randomUUID(),
     };
 }
 

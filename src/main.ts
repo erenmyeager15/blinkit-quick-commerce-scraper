@@ -1,5 +1,5 @@
 import { Actor, log } from 'apify';
-import { fetchSearchPage, PAGE_SIZE, warmUpSession } from './blinkitApi.js';
+import { createSearchSession, fetchSearchPage, PAGE_SIZE } from './blinkitApi.js';
 import { normalizeInput } from './input.js';
 import { extractProducts, isBlockedPage } from './routes.js';
 import type { ActorInput, ProductRecord } from './types.js';
@@ -47,10 +47,7 @@ async function collectPayloadsForQuery(query: string, queryIndex: number, remain
     for (let attempt = 1; attempt <= 3; attempt += 1) {
         try {
             const proxyUrl = await proxyConfiguration?.newUrl(`blinkit_${queryIndex}_${attempt}`);
-            const { session, statusCode, html } = await warmUpSession(query, proxyUrl);
-
-            if (statusCode >= 400) throw new Error(`Blinkit storefront returned HTTP ${statusCode}`);
-            if (await isBlockedPage('', html)) throw new Error('Blinkit storefront returned a challenge page');
+            const session = createSearchSession();
 
             payloads.length = 0;
             for (let pageIndex = 0; pageIndex < maxPagesPerQuery; pageIndex += 1) {

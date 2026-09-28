@@ -4,7 +4,7 @@ Scrape public Blinkit search results for a selected delivery location and export
 
 It collects public product details such as title, brand, pack size, price, MRP, discount percentage, rating, rating count, stock status, image URL, product URL, search query, and scrape timestamp. It does not require a Blinkit login or API key, and it does not collect private customer, account, order, seller, or contact data.
 
-The default run is intentionally small: one in-stock `milk` result for Mumbai with one result payload and Apify Residential proxy in India.
+The default run searches `milk` in Mumbai and saves up to 50 in-stock results using Apify Residential proxy in India.
 
 ## What you get
 
@@ -123,7 +123,7 @@ Platform usage, such as compute and proxy traffic, may also be charged by Apify 
 
 Blinkit prices and availability vary by delivery area and can change frequently. The Actor includes:
 
-- Direct requests to Blinkit's public structured search responses, with no browser
+- Direct requests to Blinkit's public structured search responses, without a browser or storefront warm-up
 - Delivery location sent as latitude/longitude with every request, so prices and stock match the area you ask for
 - India residential proxy defaults
 - Block/challenge detection with retries and session rotation

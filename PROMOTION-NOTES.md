@@ -13,7 +13,7 @@ Scrape public Blinkit search results for a selected city/location and save produ
 ## 45-second tutorial outline
 
 1. Open the Actor and keep the default `milk` keyword.
-2. Keep Mumbai latitude/longitude and `maxResults: 1` for the first test.
+2. Keep Mumbai latitude/longitude and the default `maxResults: 50` for a full-page test.
 3. Keep `inStockOnly` and Residential India proxy enabled.
 4. Run the Actor and open the `Products` dataset view.
 5. Show title, brand, pack size, price, MRP, stock, image URL, and product URL.
@@ -23,7 +23,7 @@ Scrape public Blinkit search results for a selected city/location and save produ
 
 I polished my Blinkit Product Scraper on Apify.
 
-It collects public, location-specific product listing data like title, brand, pack size, price, MRP, discount, rating, stock status, image URL, and product URL. The default run is intentionally tiny: one in-stock result for Mumbai, so users can test the output before scaling.
+It collects public, location-specific product listing data like title, brand, pack size, price, MRP, discount, rating, stock status, image URL, and product URL. The default run searches milk in Mumbai and saves up to 50 in-stock products, so users can see a useful sample before scaling.
 
 Useful for quick-commerce price monitoring, FMCG catalog research, and local assortment reports.
 
@@ -31,7 +31,7 @@ Useful for quick-commerce price monitoring, FMCG catalog research, and local ass
 
 I updated a Blinkit scraper for Apify. It saves public search-result data for a selected location: product title, brand, pack size, price, MRP, discount, rating, stock status, image, and URL.
 
-Default run is one `milk` result for Mumbai with India Residential proxy, so it is meant to be tested cheaply before scaling.
+The default run searches `milk` in Mumbai and saves up to 50 in-stock products with India Residential proxy.
 
 ## SEO keywords
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildSearchEndpoint, cookieHeader, PAGE_SIZE } from '../dist/blinkitApi.js';
+import { buildSearchEndpoint, createSearchSession, PAGE_SIZE } from '../dist/blinkitApi.js';
 import { normalizeInput } from '../dist/input.js';
 import { buildSearchUrl, extractProducts, isBlockedPage } from '../dist/routes.js';
 
@@ -133,13 +133,12 @@ test('search endpoint pages by offset for later pages', () => {
     assert.equal(url.searchParams.get('page_index'), '2');
 });
 
-test('cookie header keeps only name=value pairs', () => {
-    const header = cookieHeader([
-        'gr_1_deviceId=abc123; Path=/; HttpOnly',
-        '__cf_bm=token-value; Path=/; Secure; SameSite=None',
-    ]);
-
-    assert.equal(header, 'gr_1_deviceId=abc123; __cf_bm=token-value');
-    assert.equal(cookieHeader(undefined), '');
-    assert.equal(cookieHeader('single=value; Path=/'), 'single=value');
+test('starts search directly with a fresh cookie-free request identity', () => {
+    const first = createSearchSession();
+    const second = createSearchSession();
+    assert.equal(first.cookies, '');
+    assert.ok(first.deviceId);
+    assert.ok(first.sessionUuid);
+    assert.notEqual(first.deviceId, second.deviceId);
+    assert.notEqual(first.sessionUuid, second.sessionUuid);
 });
