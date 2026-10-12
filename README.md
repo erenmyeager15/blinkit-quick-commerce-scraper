@@ -1,6 +1,6 @@
-# Blinkit Product Scraper: Prices & Stock
+# Blinkit Product Scraper: Prices, Discounts & Stock by Location
 
-Scrape public Blinkit search results for a selected delivery location and export clean product rows from the Apify Dataset in JSON, CSV, Excel, XML, HTML, RSS, or JSONL. The Actor is built for quick-commerce price monitoring, FMCG catalog research, local stock checks, and lightweight retail reports.
+Compare Blinkit grocery prices, discounts and stock by Indian delivery location. Extract public product listings for quick-commerce price research, FMCG catalog analysis and local availability checks, then export the Apify Dataset to CSV, JSON, Excel, XML, HTML, RSS or JSONL.
 
 It collects public product details such as title, brand, pack size, price, MRP, discount percentage, rating, rating count, stock status, image URL, product URL, search query, and scrape timestamp. It does not require a Blinkit login or API key, and it does not collect private customer, account, order, seller, or contact data.
 
@@ -96,28 +96,28 @@ A saved dataset row looks like this:
 
 Optional fields may be `null` or `N/A` when Blinkit does not expose them in the captured search payload.
 
-## Pricing
+## Pricing: Product Results + Actor Start
 
 This Actor uses Apify Pay Per Event pricing.
 
 | Event | Price |
 | --- | ---: |
 | `product-scraped` | `$0.0015` per saved product row, or `$1.50` per 1,000 |
-| `apify-actor-start` | `$0.00005` per GB when the Actor starts |
+| `apify-actor-start` | `$0.00005` per GB when the Actor starts, minimum one event |
 
-Products are charged only when a clean product record is saved to the dataset. The Actor uses atomic dataset charging, so the run stops before saving unpaid records after the user's maximum charge is reached.
+The `product-scraped` event is charged only when a clean product record is saved to the dataset. Failed requests, blocked pages and unsaved records do not create product-event fees. Products already saved before a partial failure retain their normal result charges. The Actor uses atomic dataset charging and stops further saving when Apify reports that the event-charge limit is reached.
 
-The Actor start event stays at Apify's default price, so there is no large per-run fee on top of the per-product price. Frequent small monitoring runs stay cheap.
+The start event applies when the Actor starts, including empty or failed runs. Apify counts one start event per GB of memory, with at least one event: a 512 MB run has a `$0.00005` start-event fee, not zero. Product fees and the start fee are separate.
 
-Platform usage, such as compute and proxy traffic, may also be charged by Apify depending on the run configuration. The Actor runs without a browser, so a run transfers well under a megabyte through the proxy. Residential India proxy is recommended for Blinkit reliability and regional pricing.
+The current Store Pricing tab lists platform costs as included. Check the [live Pricing tab](https://apify.com/fascinating_lentil/blinkit-quick-commerce-scraper/pricing) before running for current event prices and platform-usage terms. Owner-run usage reports are not a promise of a customer's total bill. The Actor uses HTTP rather than a browser; response sizes and actual usage vary by query and page count. Residential India proxy remains the existing recommendation for regional access.
 
 ## Cost control
 
-- Cost scales with the number of products you save, so you are only charged for rows you keep.
+- Product-event costs scale with saved rows; the memory-based Actor Start fee still applies.
 - Start with one query and the default `maxResults: 50`.
 - Keep `inStockOnly` enabled unless you need unavailable products.
 - Add more queries, pages, or cities only after checking the output.
-- Use the run's maximum cost setting if you want a strict spending cap.
+- Use Apify's maximum-charge setting to limit Actor event charges and keep query/page limits small. A result limit alone is not a guaranteed cap on every possible run cost.
 
 ## Reliability
 
